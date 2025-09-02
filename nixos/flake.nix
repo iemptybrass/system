@@ -24,6 +24,12 @@
           specialArgs = {
             inherit
               inputs
+              hostname
+              system
+              version
+              identifier
+              platform
+              storage;
           };
 
           modules = [];
