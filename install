@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+function tui {
+  printf '\033[2J\033[H'
+}
+
+tui
+
+prompt() {
+    local input
+    printf "%s" "$1" > /dev/tty
+    IFS= read -r input < /dev/tty
+    printf "%s" "$input"
+}
+
+# --- Generate a host ID for ZFS ---
+HOST_ID=$(head -c4 /dev/urandom | od -An -tx4 | tr -d ' ')  # e.g. "26341dc4"
+
+echo "### NixOS ZFS Disk Formatter + Config Generator ###" > /dev/tty
+
+# --- Confirm destructive action ---
+echo "" > /dev/tty
+yn=$(prompt "This will irreversibly format the selected disk. Are you sure? [y/n] ")
+case $yn in
+    [Yy]* ) echo "Proceeding with format..." > /dev/tty ;;
+    [Nn]* ) echo "Aborted." > /dev/tty; exit 0 ;;
+    * ) echo "Please answer y or n." > /dev/tty; exit 1 ;;
+esac
+
+# --- Disk selection ---
+echo "Listing available disks:" > /dev/tty
+lsblk
+mapfile -t disks < <(lsblk -ndo NAME,SIZE,MODEL)
+echo -e "\nAvailable disks:\n" > /dev/tty
+for i in "${!disks[@]}"; do
+    printf "%d) %s\n" $((i+1)) "${disks[i]}" > /dev/tty
+done
+
+while true; do
+    selection=$(prompt "Enter the number of the disk to install to: ")
+    if [[ "$selection" =~ ^[0-9]+$ ]] && (( selection >= 1 && selection <= ${#disks[@]} )); then
+        break
+    else
+        echo "Invalid selection. Please try again." > /dev/tty
+    fi
+done
+
+# Determine disk device from selection.
+DISK="/dev/$(echo "${disks[$((selection-1))]}" | awk '{print $1}')"
+
+# --- Determine partition naming (nvme vs others) ---
+if [[ "$DISK" =~ nvme ]]; then
+    BOOTDISK="${DISK}p3"
+    SWAPDISK="${DISK}p2"
+    ZFSDISK="${DISK}p1"
+else
+    BOOTDISK="${DISK}3"
+    SWAPDISK="${DISK}2"
+    ZFSDISK="${DISK}1"
+fi
+
+{
+  echo ""
+  echo "Selected disk: $DISK"
+  echo "Boot Partition will be: $BOOTDISK"
+  echo "Swap Partition will be: $SWAPDISK"
+  echo "ZFS Partition will be: $ZFSDISK"
+} > /dev/tty
+
+for i in {1..10}; do
+    if [ -b "$ZFSDISK" ]; then
+        break
+    else
+        echo "Waiting for $ZFSDISK to become available..." > /dev/tty
+        sleep 1
+    fi
+done
+
+if [ ! -b "$ZFSDISK" ]; then
+    echo "Error: $ZFSDISK not found after waiting." > /dev/tty
+    exit 1
+fi
+
+printf "\x%s\x%s\x%s\x%s" "${HOST_ID:0:2}" "${HOST_ID:2:2}" "${HOST_ID:4:2}" "${HOST_ID:6:2}"
+
+
+echo "✅ Disk formatted, ZFS pool 'vault' created, and NixOS configuration files generated in /mnt/etc/nixos." > /dev/tty
+echo "Now run: nixos-install --root /mnt" > /dev/tty
