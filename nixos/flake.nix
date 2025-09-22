@@ -36,6 +36,7 @@
             {
             
               imports = [ 
+                ./modules
                 hardware.nixosModules.facter
               ];
               
