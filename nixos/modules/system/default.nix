@@ -1,8 +1,9 @@
 {
 
   imports = [
-  	./boot
-  	./network
+    ./boot
+    ./network
+    ./users
   ];
 
 }
