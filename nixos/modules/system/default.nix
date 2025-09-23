@@ -5,6 +5,7 @@
     ./init
     ./network
     ./nix
+    ./sound
     ./users
   ];
 
